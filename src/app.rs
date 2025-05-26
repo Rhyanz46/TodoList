@@ -29,3 +29,19 @@ impl TodoApp {
         }
     }
 }
+
+impl Todo {
+    pub(crate) fn is_overdue(&self) -> bool {
+        if let Some(due_time) = self.due_time {
+            let now = chrono::Local::now().time();
+            !self.completed && now > due_time
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn time_until_due(&self) -> Option<String> {
+        println!("test until due");
+        None
+    }
+}
