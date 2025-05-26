@@ -29,3 +29,39 @@ impl TodoApp {
         }
     }
 }
+
+impl Todo {
+    pub(crate) fn is_overdue(&self) -> bool {
+        if let Some(due_time) = self.due_time {
+            let now = chrono::Local::now().time();
+            !self.completed && now > due_time
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn time_until_due(&self) -> Option<String> {
+        if let Some(due_time) = self.due_time {
+            let now = chrono::Local::now().time();
+            if self.completed {
+                return None;
+            }
+
+            if now > due_time {
+                Some("Terlambat!".to_string())
+            } else {
+                let diff = due_time - now;
+                let hours = diff.num_hours();
+                let minutes = diff.num_minutes() % 60;
+
+                if hours > 0 {
+                    Some(format!("{}j {}m lagi", hours, minutes))
+                } else {
+                    Some(format!("{}m lagi", minutes))
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
