@@ -1,12 +1,11 @@
 use iced::{Application, Command, Element, Length, Theme};
-use iced::futures::StreamExt;
-use iced::widget::{button, checkbox, container, pick_list, row, scrollable, text, text_input};
+use iced::widget::{button, checkbox, container, row, scrollable, text, text_input};
 
 use crate::models::{Message, Priority, Todo, TodoApp};
 
 impl Priority {
-    fn all() -> Vec<Priority> {
-        vec![Priority::High, Priority::Medium, Priority::Low]
+    fn all() -> &'static [Priority] {
+        &[Priority::High, Priority::Medium, Priority::Low]
     }
 
     fn as_str(&self) -> &str {
@@ -64,13 +63,12 @@ impl Application for TodoApp {
                         priority: self.selected_priority.clone(),
                         created_at: chrono::Local::now(),
                     };
-                    let mut todo_text_style = if todo.completed {
-                        iced::theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5))
-                    } else if todo.is_overdue() {
-                        iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2))
-                    } else {
-                        iced::theme::Text::Default
-                    };
+                    self.todos.push(todo);
+                    self.next_id += 1;
+                    self.todo_input.clear();
+                    self.time_input.clear();
+                    self.selected_priority = Priority::Medium;
+                    self.save_todos();
                 }
             }
             Message::TodoInputChanged(value) => {
@@ -127,7 +125,7 @@ impl Application for TodoApp {
             .padding(10)
             .width(Length::FillPortion(1));
 
-        let priority_picker = pick_list(
+        let priority_picker = iced::widget::pick_list(
             &Priority::all()[..],
             Some(self.selected_priority.clone()),
             Message::PrioritySelected, )
@@ -139,6 +137,7 @@ impl Application for TodoApp {
             .padding(10);
 
         let input_row = row![todo_input, time_input, priority_picker, add_button].spacing(10);
+        // let input_row = row![todo_input, time_input, add_button].spacing(10);
 
         let new_day_button = button("Hari Baru")
             .on_press(Message::NewDay)
@@ -150,28 +149,31 @@ impl Application for TodoApp {
 
         let controls = row![new_day_button, clear_button].spacing(10);
 
-        let mut sorted_todos = self.todos.clone();
-        sorted_todos.sort_by(|a, b| {
+        let mut indices: Vec<usize> = (0..self.todos.len()).collect();
+        indices.sort_by(|&a, &b| {
+            let todo_a = &self.todos[a];
+            let todo_b = &self.todos[b];
 
-            match (a.completed, b.completed) {
+            // First sort by completion status
+            match (todo_a.completed, todo_b.completed) {
                 (true, false) => std::cmp::Ordering::Greater,
                 (false, true) => std::cmp::Ordering::Less,
                 _ => {
-
-                    match (a.is_overdue(), b.is_overdue()) {
+                    // Then by overdue status
+                    match (todo_a.is_overdue(), todo_b.is_overdue()) {
                         (true, false) => std::cmp::Ordering::Less,
                         (false, true) => std::cmp::Ordering::Greater,
                         _ => {
-
+                            // Then by priority
                             let priority_order = |p: &Priority| match p {
                                 Priority::High => 0,
                                 Priority::Medium => 1,
                                 Priority::Low => 2,
                             };
-                            match priority_order(&a.priority).cmp(&priority_order(&b.priority)) {
+                            match priority_order(&todo_a.priority).cmp(&priority_order(&todo_b.priority)) {
                                 std::cmp::Ordering::Equal => {
-
-                                    match (a.due_time, b.due_time) {
+                                    // Finally by due time
+                                    match (todo_a.due_time, todo_b.due_time) {
                                         (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
                                         (Some(_), None) => std::cmp::Ordering::Less,
                                         (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -186,15 +188,16 @@ impl Application for TodoApp {
             }
         });
 
-        let todo_list = if sorted_todos.is_empty() {
+        let todo_list = if self.todos.is_empty() {
             iced::widget::column![text("Belum ada tugas untuk hari ini").size(16)]
         } else {
-            let mut todos = iced::widget::column![].spacing(5);
-            for todo in &sorted_todos {
+            let mut todos_column = iced::widget::column![].spacing(8);
+            for &index in &indices {
+                let todo = &self.todos[index];
                 let checkbox = checkbox("", todo.completed)
                     .on_toggle(move |_| Message::ToggleTodo(todo.id));
 
-                let mut todo_text_style = if todo.completed {
+                let todo_text_style = if todo.completed {
                     iced::theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5))
                 } else if todo.is_overdue() {
                     iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2))
@@ -241,9 +244,9 @@ impl Application for TodoApp {
                     .spacing(10)
                     .align_items(iced::Alignment::Center);
 
-                todos = todos.push(todo_row);
+                todos_column = todos_column.push(todo_row);
             }
-            todos
+            todos_column
         };
 
         let stats = {
@@ -251,8 +254,7 @@ impl Application for TodoApp {
             let completed = self.todos.iter().filter(|t| t.completed).count();
             let remaining = total - completed;
 
-            text(format!("Total: {} | Selesai: {} | Tersisa: {}", total, completed, remaining))
-                .size(14)
+            text(format!("Total: {} | Selesai: {} | Tersisa: {}", total, completed, remaining)).size(14)
         };
 
         let content = iced::widget::column![
@@ -261,9 +263,7 @@ impl Application for TodoApp {
             controls,
             stats,
             scrollable(todo_list).height(Length::Fill)
-        ]
-            .spacing(20)
-            .padding(20);
+        ].spacing(20).padding(20);
 
         container(content)
             .width(Length::Fill)
@@ -273,5 +273,17 @@ impl Application for TodoApp {
 
     fn theme(&self) -> Theme {
         Theme::Light
+    }
+}
+
+impl std::fmt::Display for Priority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl Default for Priority {
+    fn default() -> Self {
+        Priority::Medium
     }
 }
