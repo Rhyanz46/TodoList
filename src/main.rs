@@ -3,7 +3,6 @@ mod app;
 mod models;
 
 use iced::{Application, Settings};
-use serde::{Deserialize, Serialize};
 use crate::models::TodoApp;
 
 fn main() -> iced::Result {
